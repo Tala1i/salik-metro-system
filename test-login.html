@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <title>اختبار تسجيل دخول</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <style>
+    body { font-family: Tahoma, sans-serif; direction: rtl; padding: 20px; background-color: #f5f5f5; }
+    button { padding: 10px 20px; font-size: 16px; }
+    table { border-collapse: collapse; width: 100%; background: white; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+    th { background-color: #eee; }
+    .fail { color: red; }
+    .success { color: green; }
+    #summary { margin-top: 20px; font-weight: bold; white-space: pre-line; background: #fff; padding: 10px; border: 1px solid #ccc; }
+  </style>
+</head>
+<body>
+
+<h2>اختبار تسجيل الدخول – النقطة الثانية (الفيز الثاني)</h2>
+<button onclick="startTest()">ابدأ الاختبار (200 محاولة)</button>
+<div id="summary"></div>
+<table>
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>الإيميل المستخدم</th>
+      <th>النتيجة</th>
+      <th>المدة (ms)</th>
+      <th>الخطأ</th>
+    </tr>
+  </thead>
+  <tbody id="results"></tbody>
+</table>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyByECWZi0yn6tbkPTABRAv4NlEjisQz3EM",
+    authDomain: "software-c044b.firebaseapp.com",
+    projectId: "software-c044b",
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+
+  const emails = [
+    { email: "tala5799@gmail.com", password: "test1233" },
+    { email: "norasul6@gmail.com", password: "test12344" },
+    { email: "nourah.kd.11@gmail.com", password: "test12345" },
+    { email: "Sebaalbehabeb@gmail.com", password: "test123456" }
+  ];
+
+  const totalAttempts = 200;
+  let current = 1;
+  let success = 0;
+  let failure = 0;
+  let errorCount = {};
+  let tooManyStartAt = null;
+  let allTimes = [];
+  let attemptNumber = 1; // ⬅️ هذا اللي أضفناه لتعديل الترقيم
+
+  const table = document.getElementById("results");
+  const summaryBox = document.getElementById("summary");
+
+  function logAttempt(index, email, ok, time, error) {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${attemptNumber++}</td>
+      <td>${email}</td>
+      <td class="${ok ? 'success' : 'fail'}">${ok ? 'نجح' : 'فشل'}</td>
+      <td>${time}</td>
+      <td>${error || '-'}</td>
+    `;
+    table.appendChild(row);
+  }
+
+  async function tryLogin(index) {
+    const user = emails[Math.floor(index / 50) % emails.length];
+    const start = performance.now();
+
+    try {
+      await auth.signInWithEmailAndPassword(user.email, user.password);
+      const end = performance.now();
+      const time = (end - start).toFixed(2);
+      success++;
+      allTimes.push(parseFloat(time));
+      logAttempt(index , user.email, true, time);
+      await auth.signOut();
+    } catch (error) {
+      const end = performance.now();
+      const time = (end - start).toFixed(2);
+      failure++;
+      allTimes.push(parseFloat(time));
+      const code = error.code;
+      if (!errorCount[code]) errorCount[code] = 0;
+      errorCount[code]++;
+
+      if (code === 'auth/too-many-requests' && tooManyStartAt === null) {
+        tooManyStartAt = index + 1;
+      }
+
+      logAttempt(index + 1, user.email, false, time, code);
+    }
+
+    if (++current< totalAttempts) {
+      setTimeout(() => tryLogin(current), 250);
+    } else {
+      showSummary();
+    }
+  }
+
+  function startTest() {
+    current = 0;
+    success = 0;
+    failure = 0;
+    errorCount = {};
+    tooManyStartAt = null;
+    allTimes = [];
+    attemptNumber = 1; // ⬅️ إعادة الترقيم من 1
+    table.innerHTML = '';
+    summaryBox.textContent = '';
+    tryLogin(0);
+  }
+
+  function showSummary() {
+    const total = success + failure;
+    const totalTime = allTimes.reduce((a, b) => a + b, 0).toFixed(2);
+    const avgTime = (totalTime / total).toFixed(2);
+    const maxTime = Math.max(...allTimes).toFixed(2);
+    const minTime = Math.min(...allTimes).toFixed(2);
+
+    let summary = `🔍 نتائج الاختبار:\n`;
+    summary += `• عدد المحاولات: ${total}\n`;
+    summary += `• ناجحة: ${success}\n`;
+    summary += `• فاشلة: ${failure}\n`;
+    summary += `• المدة الكلية: ${totalTime} ms\n`;
+    summary += `• متوسط الزمن لكل محاولة: ${avgTime} ms\n`;
+    summary += `• أقصى زمن: ${maxTime} ms | أدنى زمن: ${minTime} ms\n`;
+    if (tooManyStartAt) {
+      summary += `• بدأ النظام يرفض (Too Many Requests) عند المحاولة: ${tooManyStartAt}\n`;
+      summary += `• عدد مرات ظهور 'too-many-requests': ${errorCount["auth/too-many-requests"] || 0}\n`;
+    } else {
+      summary += `• لم يتم اكتشاف رفض من النظام بسبب التكرار (Too Many Requests)\n`;
+    }
+
+    summary += `\nتفاصيل الأخطاء:\n`;
+    for (const [key, value] of Object.entries(errorCount)) {
+      summary += `- ${key}: ${value} مرة\n`;
+    }
+
+    summaryBox.textContent = summary;
+  }
+</script>
+
+</body>
+</html>
+
+
+
+
